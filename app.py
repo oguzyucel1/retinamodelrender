@@ -43,6 +43,7 @@ def preprocess_image(image_bytes):
 
 @app.route('/predict', methods=['POST'])
 def predict():
+    torch.set_num_threads(1)
     if 'file' not in request.files:
         return jsonify({"error": "No file provided"}), 400
 

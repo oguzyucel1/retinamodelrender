@@ -8,27 +8,24 @@ import urllib.request
 
 app = Flask(__name__)
 
-# Sınıf isimleri – eğitim sırasında kullandığınız sıraya göre ayarlayın
 class_names = ['Mild', 'Moderate', 'NO_DR', 'Proliferate_DR', 'Severe']
 
-# Model dosyasını runtime'da indir
 MODEL_PATH = "efficientnetb5_finetuned_scripted.pt"
 MODEL_URL = "https://huggingface.co/oguzyucel/retinamodel/resolve/main/efficientnetb5_finetuned_scripted.pt"
 
+# Model dosyası yoksa indir
 if not os.path.exists(MODEL_PATH):
     print("Model indiriliyor...")
     urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
     print("Model indirildi.")
 
-# Cihaz ayarı: GPU varsa kullanın, yoksa CPU
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# Cihaz seçimi
+device = torch.device("cpu")
 
-# TorchScript modelinizi yükleyin
-model = torch.jit.load(MODEL_PATH, map_location=device)
-model.to(device)
-model.eval()
+# MODELİ GLOBAL TANIMLA (ama yükleme)
+model = None
 
-# Ön işleme dönüşümleri
+# Görsel dönüşümü
 test_transforms = transforms.Compose([
     transforms.Resize(256),
     transforms.CenterCrop(224),
@@ -43,7 +40,17 @@ def preprocess_image(image_bytes):
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    torch.set_num_threads(1)
+    global model
+    torch.set_num_threads(1)  # RAM koruyucu 💊
+
+    # Lazy load: ilk istekte modeli yükle
+    if model is None:
+        print("Model RAM'e yükleniyor...")
+        model = torch.jit.load(MODEL_PATH, map_location=device)
+        model.to(device)
+        model.eval()
+        print("Model hazır!")
+
     if 'file' not in request.files:
         return jsonify({"error": "No file provided"}), 400
 
@@ -65,5 +72,5 @@ def predict():
     return jsonify(result)
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8080))  # Render 8080 verir
+    port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
